@@ -121,37 +121,115 @@
      two off the response, so leaving them out costs you next unit's
      diagnostics. -->
 
+Request body (`samples/clearly_ai.json`):
+
+```json
+{
+  "text": "The importance of effective time management cannot be overstated in today's fast-paced work environment. Professionals who develop strong organizational habits are better positioned to meet deadlines and reduce stress. There are several key strategies that can help individuals improve their productivity. First, prioritization is essential. By identifying the most important tasks and addressing them first, workers can ensure that critical objectives are met. Second, minimizing distractions plays a significant role. Setting aside dedicated blocks of time for concentrated work is widely considered beneficial. Finally, regular breaks are important for maintaining performance.",
+  "creator_id": "demo_instructor"
+}
+```
+
 ```bash
-$ curl -X POST http://127.0.0.1:5000/submit \
-  -H "Content-Type: application/json" \
-  -d '{"text": "...", "creator_id": "..."}'
+$ curl.exe -X POST http://127.0.0.1:5000/submit -H "Content-Type: application/json" -d @samples/clearly_ai.json
 ```
 
 ```json
+{
+  "confidence": 0.5,
+  "content_id": "c_cdfd1159aed6",
+  "creator_id": "demo_instructor",
+  "guess": "unsure",
+  "label": "not built yet",
+  "model_score": 0.7544,
+  "style_score": null
+}
+```
+
+Milestone 3 only has the first signal wired in, so `confidence`, `guess` and `label` are placeholders and `style_score` is `null`. For comparison, the other two samples scored:
+
+| Sample | model_score |
+|---|---|
+| clearly_ai | 0.7544 |
+| clearly_human | 0.4445 |
+| borderline | 0.3489 |
+
+The AI sample scores about 0.3 above the human one, which is the right direction. The borderline sample (0.3489) scored lower than the human sample, so one signal alone does not separate the middle ground. That is the reason for adding a second signal in Milestone 4.
+
+**A bad input (empty text)**
+
+```bash
+$ curl.exe -i -X POST http://127.0.0.1:5000/submit -H "Content-Type: application/json" -d @samples/empty.json
+```
 
 ```
+HTTP/1.1 400 BAD REQUEST
+Server: Werkzeug/3.1.9 Python/3.11.9
+Date: Mon, 09 Nov 2026 02:06:20 GMT
+Content-Type: application/json
+Content-Length: 82
+Connection: close
+
+{
+  "error": "bad_request",
+  "message": "Send JSON with a non-empty \"text\"."
+}
+```
+
+The route validates `text` before calling the signal, so an empty string returns an error instead of crashing.
 
 **An appeal**
 
-```bash
-$ curl -X POST http://127.0.0.1:5000/appeal \
-  -H "Content-Type: application/json" \
-  -d '{"content_id": "...", "reasoning": "..."}'
-```
-
-```json
-
-```
+Not built yet (Milestone 5).
 
 **What the log shows afterwards**
 
 ```bash
-$ curl "http://127.0.0.1:5000/log?limit=3"
+$ curl.exe "http://127.0.0.1:5000/log?limit=3"
 ```
 
 ```json
-
+{
+  "count": 3,
+  "entries": [
+    {
+      "combined_score": null,
+      "content_id": "c_699cca816a45",
+      "creator_id": "demo_instructor",
+      "guess": null,
+      "label": null,
+      "model_score": 0.4445,
+      "status": "guessed",
+      "style_score": null,
+      "timestamp": "2026-11-09T01:56:35+00:00"
+    },
+    {
+      "combined_score": null,
+      "content_id": "c_cdfd1159aed6",
+      "creator_id": "demo_instructor",
+      "guess": null,
+      "label": null,
+      "model_score": 0.7544,
+      "status": "guessed",
+      "style_score": null,
+      "timestamp": "2026-11-09T01:58:32+00:00"
+    },
+    {
+      "combined_score": null,
+      "content_id": "c_5dc1c2ef6151",
+      "creator_id": "demo_instructor",
+      "guess": null,
+      "label": null,
+      "model_score": 0.3489,
+      "status": "guessed",
+      "style_score": null,
+      "timestamp": "2026-11-09T01:59:11+00:00"
+    }
+  ]
+}
 ```
+
+Each submission is written to `logs/audit.jsonl` with all nine fields. `guess` and `label` are `null` for now because only the first signal is wired in. The `content_id` in each entry is the one a later `/appeal` call will use.
 
 ---
 
