@@ -53,19 +53,19 @@
 
 ### Signal one — the model signal
 
-**What it measures:**
+**What it measures:** How predictable the text is to a small language model (GPT-2) running locally (`detector.py::model_signal`). Text the model finds easy to predict (low perplexity) scores closer to 1 (more likely AI).
 
-**Why that might differ between human and AI writing:**
+**Why that might differ between human and AI writing:** Generated text is built by picking likely next words, so it tends to be more predictable to another model. Human writing has more surprising word choices, odd phrasing and personal detail.
 
-**What it can't see:**
+**What it can't see:** It only measures predictability, not authorship. Formal, conventional or heavily edited human writing is also predictable, so it can be read as AI (my formal-human test scored 0.727). Lightly edited or paraphrased AI text becomes less predictable and can slip through. It also only reads the first ~400 tokens, and GPT-2 is a small, old model, so text from newer models may not look unusual to it.
 
 ### Signal two — the style signal
 
-**What it measures:**
+**What it measures:** The shape of the text without understanding it (`stylometry.py::style_signal`). It averages three measures, each scaled to 0–1 with higher meaning more AI-like: sentence length spread (stdev ÷ mean; low = AI), type-token ratio (unique words ÷ total words; low = AI), and punctuation density (commas, semicolons, dashes, etc. per word; low = AI).
 
-**Why that might differ between human and AI writing:**
+**Why that might differ between human and AI writing:** AI prose tends toward even, mid-length sentences, a narrower vocabulary and plain punctuation. Human writing is lumpier, with a three-word sentence next to a forty-word one, and more varied punctuation.
 
-**What it can't see:**
+**What it can't see:** It cannot read, so it has no idea what the text means. Anything that changes the shape without changing the substance moves it: adding typos or dashes, splitting sentences, or pasting in a quotation makes AI text look human. Plain, short-sentence human writing looks AI-like. Type-token ratio is also unreliable on short texts (it is near 1 for almost anything under ~50 words) and drops as text gets longer, and a one-sentence submission has no spread, so that measure returns a neutral 0.5. In my tests it barely moved on AI text (0.391 on a clearly-AI paragraph), so it adds little on its own.
 
 ### The combining rule
 
@@ -107,14 +107,13 @@
 
 | Label | Score range | The exact text a reader sees |
 |---|---|---|
-| high-confidence human |  |  |
-| unsure |  |  |
-| high-confidence AI |  |  |
+| high-confidence human | 0.00 – 0.35 | We think this was probably written by a person. |
+| unsure | 0.35 – 0.65 | We can't tell whether this was written by a person or by AI. Nothing is being held against you. If you'd like, you can tell us more about how you wrote it. |
+| high-confidence AI | 0.65 – 1.00 | Our checks suggest this was probably written with the help of AI. We can be wrong. If you wrote it yourself, you can appeal and a person will take a look. |
 
-**Why I worded the "unsure" one this way:**
-<!-- It's the hardest of the three. It has to admit uncertainty without
-     sounding like an accusation, because the person reading it may well have
-     written every word themselves. -->
+The ranges come from `scoring.label_ranges()` and `config.py` (`HUMAN_THRESHOLD = 0.35`, `AI_THRESHOLD = 0.65`). I kept the starter's values. All three labels are reachable: in my runs the clearly-human sample scored 0.318, the clearly-AI sample 0.602 and a stronger AI paragraph 0.690.
+
+**Why I worded the "unsure" one this way:** The person reading it may have written every word themselves, so it says plainly that we don't know and that nothing is being held against them, and it never says "AI" or "suspicious". The last sentence gives them a next step without implying they did something wrong. Even the AI label says "probably", admits we can be wrong, and points to the appeal.
 
 
 
@@ -147,25 +146,26 @@ $ curl.exe -X POST http://127.0.0.1:5000/submit -H "Content-Type: application/js
 
 ```json
 {
-  "confidence": 0.5,
-  "content_id": "c_cdfd1159aed6",
+  "confidence": 0.6021432885507968,
+  "content_id": "c_dff3bb55f902",
   "creator_id": "demo_instructor",
   "guess": "unsure",
-  "label": "not built yet",
+  "label": "We can't tell whether this was written by a person or by AI. Nothing is being held against you. If you'd like, you can tell us more about how you wrote it.",
   "model_score": 0.7544,
-  "style_score": null
+  "style_score": 0.37375822137699216
 }
 ```
 
-Milestone 3 only has the first signal wired in, so `confidence`, `guess` and `label` are placeholders and `style_score` is `null`. For comparison, the other two samples scored:
+Both signals, the combined score (`confidence`), the guess and the label are now real. The other samples:
 
-| Sample | model_score |
-|---|---|
-| clearly_ai | 0.7544 |
-| clearly_human | 0.4445 |
-| borderline | 0.3489 |
+| Sample | model_score | style_score | confidence | guess |
+|---|---|---|---|---|
+| clearly_ai | 0.7544 | 0.3738 | 0.602 | unsure |
+| clearly_human | 0.4445 | 0.1283 | 0.318 | human |
+| borderline | 0.3489 | 0.2814 | 0.322 | human |
+| strong_ai (`samples/strong_ai.json`) | 0.8894 | 0.3906 | 0.690 | ai |
 
-The AI sample scores about 0.3 above the human one, which is the right direction. The borderline sample (0.3489) scored lower than the human sample, so one signal alone does not separate the middle ground. That is the reason for adding a second signal in Milestone 4.
+The `clearly_ai` sample is only "unsure" (0.602). The style signal barely moves on it, so the average stays under the 0.65 line. Only the stronger AI paragraph reaches the AI label.
 
 **A bad input (empty text)**
 
@@ -175,11 +175,7 @@ $ curl.exe -i -X POST http://127.0.0.1:5000/submit -H "Content-Type: application
 
 ```
 HTTP/1.1 400 BAD REQUEST
-Server: Werkzeug/3.1.9 Python/3.11.9
-Date: Mon, 09 Nov 2026 02:06:20 GMT
 Content-Type: application/json
-Content-Length: 82
-Connection: close
 
 {
   "error": "bad_request",
@@ -187,60 +183,67 @@ Connection: close
 }
 ```
 
-The route validates `text` before calling the signal, so an empty string returns an error instead of crashing.
+The route validates `text` before calling the signals, so an empty string returns an error instead of crashing.
 
 **An appeal**
 
-Not built yet (Milestone 5).
-
-**What the log shows afterwards**
+On the `strong_ai` submission (`c_00655f99f158`, labelled AI):
 
 ```bash
-$ curl.exe "http://127.0.0.1:5000/log?limit=3"
+$ curl.exe -X POST http://127.0.0.1:5000/appeal -H "Content-Type: application/json" -d '{"content_id": "c_00655f99f158", "reasoning": "I wrote this myself for a class assignment and can share my drafts."}'
 ```
 
 ```json
 {
-  "count": 3,
+  "content_id": "c_00655f99f158",
+  "message": "Thanks. Your appeal has been recorded and this item is now under review.",
+  "status": "under_review"
+}
+```
+
+A content_id that doesn't exist returns a 404 instead of failing silently:
+
+```json
+{
+  "error": "not_found",
+  "message": "No submission with content_id c_typo."
+}
+```
+
+**What the log shows afterwards**
+
+```bash
+$ curl.exe "http://127.0.0.1:5000/log?limit=2"
+```
+
+```json
+{
+  "count": 2,
   "entries": [
     {
-      "combined_score": null,
-      "content_id": "c_699cca816a45",
+      "combined_score": 0.6898654117862197,
+      "content_id": "c_00655f99f158",
       "creator_id": "demo_instructor",
-      "guess": null,
-      "label": null,
-      "model_score": 0.4445,
-      "status": "guessed",
-      "style_score": null,
-      "timestamp": "2026-11-09T01:56:35+00:00"
+      "guess": "ai",
+      "label": "Our checks suggest this was probably written with the help of AI. We can be wrong. If you wrote it yourself, you can appeal and a person will take a look.",
+      "model_score": 0.8894,
+      "status": "decided",
+      "style_score": 0.3905635294655492,
+      "timestamp": "2026-11-09T02:19:38+00:00"
     },
     {
-      "combined_score": null,
-      "content_id": "c_cdfd1159aed6",
+      "content_id": "c_00655f99f158",
       "creator_id": "demo_instructor",
-      "guess": null,
-      "label": null,
-      "model_score": 0.7544,
-      "status": "guessed",
-      "style_score": null,
-      "timestamp": "2026-11-09T01:58:32+00:00"
-    },
-    {
-      "combined_score": null,
-      "content_id": "c_5dc1c2ef6151",
-      "creator_id": "demo_instructor",
-      "guess": null,
-      "label": null,
-      "model_score": 0.3489,
-      "status": "guessed",
-      "style_score": null,
-      "timestamp": "2026-11-09T01:59:11+00:00"
+      "event": "appeal",
+      "reasoning": "I wrote this myself for a class assignment and can share my drafts.",
+      "status": "under_review",
+      "timestamp": "2026-11-09T02:19:52+00:00"
     }
   ]
 }
 ```
 
-Each submission is written to `logs/audit.jsonl` with all nine fields. `guess` and `label` are `null` for now because only the first signal is wired in. The `content_id` in each entry is the one a later `/appeal` call will use.
+The appeal is written next to the original decision under the same `content_id`, and its status is `under_review`.
 
 ---
 
