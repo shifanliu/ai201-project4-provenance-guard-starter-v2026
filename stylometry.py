@@ -64,8 +64,12 @@ def sentence_length_spread(text: str) -> float:
     `stdev` raises on fewer than two values. Decide what that should return
     before the attack set decides for you.
     """
-    # TODO: replace this
-    return 0.0
+    # Scale: coefficient of variation (stdev / mean). Higher = more human.
+    # Fewer than two sentences has no spread, so return 0.0.
+    lengths = [len(words(s)) for s in sentences(text)]
+    if len(lengths) < 2 or statistics.mean(lengths) == 0:
+        return 0.0
+    return statistics.stdev(lengths) / statistics.mean(lengths)
 
 
 def type_token_ratio(text: str) -> float:
@@ -80,8 +84,8 @@ def type_token_ratio(text: str) -> float:
     directly comparable on it, and if your test inputs vary a lot in length,
     that alone can look like a signal.
     """
-    # TODO: replace this
-    return 0.0
+    w = words(text)
+    return len(set(w)) / len(w) if w else 0.0
 
 
 def punctuation_density(text: str) -> float:
@@ -94,8 +98,12 @@ def punctuation_density(text: str) -> float:
         more interesting than full stops, because they vary more between
         writers.
     """
-    # TODO: replace this
-    return 0.0
+    # Counts non-full-stop punctuation per word. Higher = more human.
+    w = words(text)
+    if not w:
+        return 0.0
+    marks = re.findall(r"[,;:\-—–!?()\"]", text)
+    return len(marks) / len(w)
 
 
 # ── Combining them ───────────────────────────────────────────────────────────
@@ -122,8 +130,21 @@ def style_signal(text: str) -> float:
     you trust it. Plain and ordinary, not formal: formal prose reads as *human*
     to signal one, and it is plain writing that gets accused.
     """
-    # TODO: replace this
-    return 0.5
+    def clamp(x):
+        return max(0.0, min(1.0, x))
+
+    # Each measure flipped/scaled to 0–1, higher = more AI-like.
+    # spread: CV of 0 -> 1.0 (AI), CV >= 0.8 -> 0.0 (human). Single sentence -> neutral.
+    if len(sentences(text)) < 2:
+        spread_ai = 0.5
+    else:
+        spread_ai = clamp(1 - sentence_length_spread(text) / 0.8)
+    # ttr: <=0.4 -> 1.0 (AI), >=0.8 -> 0.0 (human)
+    ttr_ai = clamp((0.8 - type_token_ratio(text)) / 0.4)
+    # punctuation: 0 marks/word -> 1.0 (AI), >=0.15 -> 0.0 (human)
+    punct_ai = clamp(1 - punctuation_density(text) / 0.15)
+
+    return (spread_ai + ttr_ai + punct_ai) / 3
 
 
 if __name__ == "__main__":

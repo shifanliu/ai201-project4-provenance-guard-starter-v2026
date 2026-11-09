@@ -72,16 +72,27 @@
 <!-- Write the rule in words, then give the numbers. What happens when the two
      signals disagree? -->
 
-**The rule:**
+**The rule:** A plain weighted average of the two signals. Both point the same way (higher = more likely AI), so the combined score is also 0 (confidently human) to 1 (confidently AI). If the signals disagree, the average lands in the middle, which I treat as "unsure" rather than picking a winner.
 
-**The numbers:**
+**The numbers:** `combined = 0.6 × model_score + 0.4 × style_score` (`WEIGHT_MODEL_SIGNAL = 0.6`, `WEIGHT_STYLE_SIGNAL = 0.4` in `config.py`). I weight the model signal higher because it reads meaning and separated my test inputs more than the style signal, which only sees the shape of the text and, on short inputs, barely moves.
 
 **Where it lives:** `scoring.py::combine_signals`
 
 <!-- ⚠️ The grader checks your code against that line. If your rule lives
      somewhere else, say where. -->
 
-**A case where my two signals split, and what my rule does with it:**
+**Four calibration inputs (both signals printed separately):**
+
+| Input | model_score | style_score | combined |
+|---|---|---|---|
+| Clearly AI (generic business-AI paragraph) | 0.889 | 0.391 | 0.690 |
+| Clearly human (casual, messy anecdote) | 0.232 | 0.000 | 0.139 |
+| Formal human (committee-minutes style) | 0.727 | 0.512 | 0.641 |
+| Lightly-edited AI (same AI text, simplified) | 0.714 | 0.441 | 0.605 |
+
+(Combined scores use the 0.6 / 0.4 weights.) Clearly-AI and clearly-human text land 0.55 apart (0.690 vs 0.139), so the score separates them. The two cases that matter are not well separated: formal human writing (0.641) is just under the 0.65 AI threshold, close to clearly AI text (0.690) and above lightly-edited AI (0.605). That is a false-positive risk, and it comes mostly from the model signal, which reads formal prose as predictable. Giving that signal more weight (0.5 to 0.6) made this slightly worse for formal human writing (0.619 to 0.641) in exchange for pushing clearly-AI text over the AI threshold.
+
+**A case where my two signals split, and what my rule does with it:** On the clearly-AI paragraph, the model signal is confident (0.889) but the style signal is only 0.391, a gap of about 0.5. The style signal is weak here because the paragraph has varied sentence lengths and plenty of commas, so it doesn't look "evenly shaped". With the 0.6 / 0.4 weights the average is 0.690, just over the 0.65 AI threshold, so it gets the high-confidence AI label, but only narrowly: the disagreement pulls it toward the middle, and with equal weights (0.640) it would have been "unsure". The same weighting leaves formal human writing at 0.641, one step below the AI line, so the margin against a false accusation is thin.
 
 
 

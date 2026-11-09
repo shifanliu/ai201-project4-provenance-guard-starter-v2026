@@ -211,7 +211,11 @@ def submit():
     # Step 3 - One real signal that we first tested from the terminal
     # python detector.py "some text"
     import detector
+    import scoring
+    import stylometry
     model_score = detector.model_signal(text)
+    style_score = stylometry.style_signal(text)
+    combined = scoring.combine_signals(model_score, style_score)
 
     # Step 4 - log the decision. The content_id is what /appeal needs later.
     content_id = f"c_{uuid.uuid4().hex[:12]}"
@@ -220,19 +224,21 @@ def submit():
        creator_id=creator_id,
        guess="unsure",
        model_score=model_score,
+       style_score=style_score,
+       combined_score=combined,
        label="not built yet",
        status="guessed",
    )
-    
+
     # Step 1 - the route answers. Hardcoded without any logic yet
     return jsonify({
         "content_id": content_id,
         "creator_id": creator_id,
         "guess": "unsure",
-        "confidence": 0.5,
+        "confidence": combined,
         "label": "not built yet",
         "model_score": model_score,
-        "style_score": None,
+        "style_score": style_score,
     }), 200
 
 
