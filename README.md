@@ -36,10 +36,17 @@
 
 ## What This Does
 
-<!-- The path a submission takes, from arriving to the label a reader sees.
-     Six or seven steps — this is the trace you wrote in Milestone 1. -->
+Provenance Guard is a small Flask backend a writing site could plug into. It takes a piece of text and returns a guess about whether a person or AI wrote it, a confidence score, and a plain-English label. A writer who disagrees can appeal. A submission takes this path (`app.py::submit`):
 
+1. **Request arrives.** A client sends `POST /submit` with JSON `{"text": "...", "creator_id": "..."}`. If `text` is missing, empty or not a string, the service returns a 400 error and stops.
+2. **Signal one, the model signal.** `detector.model_signal` runs the text through a local GPT-2 model and returns a 0–1 score for how predictable it is. Higher means more likely AI.
+3. **Signal two, the style signal.** `stylometry.style_signal` measures the shape of the text (sentence length spread, vocabulary variety, punctuation) without reading its meaning, and returns a 0–1 score in the same direction.
+4. **Combine.** `scoring.combine_signals` takes a weighted average, 0.6 × model + 0.4 × style, into one combined score (returned as `confidence`).
+5. **Label.** `scoring.score_to_label` turns the combined score into a guess (`human`, `unsure` or `ai`) and the sentence a reader sees. Scores up to 0.35 are human, 0.65 and above are AI, and everything in between is unsure.
+6. **Log.** `audit.log_decision` writes a new `content_id`, the creator, both signal scores, the combined score, the guess, the label and a status of `decided` to `logs/audit.jsonl`.
+7. **Respond.** The service returns the `content_id`, guess, confidence, label and both signal scores as JSON.
 
+If the writer disagrees, they send `POST /appeal` with the `content_id` and their reasoning. The service checks the id exists, logs the appeal next to the original decision, and sets the status to `under_review`. Nothing is re-checked automatically.
 
 ---
 
@@ -251,15 +258,37 @@ The appeal is written next to the original decision under the same `content_id`,
 
 **Moment 1**
 
-- *What I asked for:*
-- *What came back:*
-- *What I changed:*
+- *What I asked for:* I asked Claude to help me write my five acceptance
+  criteria for Milestone 2, first asking for an example format and then for
+  a fill-in template with blanks for my own numbers. After I drafted my own
+  criteria, I asked it to help with the "why" sentences.
+- *What came back:* It gave me a template and a full worked example. It also
+  pointed out problems in my draft: criterion 5 said "3 bad inputs" but
+  listed 5, criterion 1 allowed 1 miss in 5 (a 20% false-positive rate)
+  while my reason said a false accusation is serious, and criterion 3 was
+  too easy to hit.
+- *What I changed:* I fixed the count in criterion 5 so the numbers matched.
+  I [raised criterion 1 to 10 pieces / kept 5 pieces and changed it to at
+  most 0 / kept it as is because ___], and I [tightened criterion 3 from
+  2 of 3 to 4 of 5 / kept it because ___]. I rewrote the "why" sentences in
+  my own words so each one names who is hurt by the failure.
 
 **Moment 2**
 
-- *What I asked for:*
-- *What came back:*
-- *What I changed:*
+- *What I asked for:* I asked Claude to check my `submit()` handler in
+  `app.py` for Milestone 3, and I pasted the `audit.py` file so it could
+  check the `log_decision` call.
+- *What came back:* It spotted that my code called the signal
+  (`detector.model_signal(text)`) before validating `text`, so an empty or
+  missing text would crash with a 500 instead of returning my 400 error. It
+  also noticed the response returned `"content_id": "hardcoded"` while the
+  log held the real id, and that my `status` value did not match the one in
+  my criteria.
+- *What I changed:* I moved the validation above the signal call, replaced
+  the hardcoded `content_id` with the real variable, and changed `status`
+  to `"guessed"`. I tested an empty text with curl and got a 400 error
+  instead of a crash. [I did / did not add `guess` and `label` to the
+  `log_decision` call, so the log shows ___ for them.]
 
 <!-- ═══════════════════════ UNIT 8 — THE TEST ═══════════════════════ -->
 
